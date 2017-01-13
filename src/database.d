@@ -1,6 +1,6 @@
 module rocksdb.database;
 
-import std.stdio : writefln;
+import std.array : array;
 import std.conv : to;
 import std.string : fromStringz, toStringz;
 import std.format : format;
@@ -17,11 +17,18 @@ extern (C) {
 
   void rocksdb_put(rocksdb_t*, const rocksdb_writeoptions_t*, const char*, size_t, const char*, size_t, char**);
   char* rocksdb_get(rocksdb_t*, const rocksdb_readoptions_t*, const char*, size_t, size_t*, char**);
+  void rocksdb_delete(rocksdb_t*, const rocksdb_writeoptions_t*, const char*, size_t, char**);
 
   void rocksdb_write(rocksdb_t*, const rocksdb_writeoptions_t*, rocksdb_writebatch_t*, char**);
 
   rocksdb_t* rocksdb_open(const rocksdb_options_t*, const char* name, char** errptr);
   void rocksdb_close(rocksdb_t*);
+}
+
+void ensureRocks(char* err) {
+  if (err) {
+    throw new Exception(format("Error: %s", fromStringz(err)));
+  }
 }
 
 class Database {
@@ -33,10 +40,7 @@ class Database {
   this(DBOptions opts, string path) {
     char *err = null;
     this.db = rocksdb_open(opts.opts, toStringz(path), &err);
-
-    if (err) {
-      throw new Exception(format("Failed to open rocksdb: %s", fromStringz(err)));
-    }
+    err.ensureRocks();
     
     this.writeOptions = new WriteOptions;
     this.readOptions = new ReadOptions;
@@ -49,42 +53,49 @@ class Database {
   }
 
   string get(string key, ReadOptions opts=null) {
+    return (cast(char[])this.get(cast(byte[])key, opts)).to!string;
+  }
+
+  byte[] get(byte[] key, ReadOptions opts = null) {
     size_t len;
-    immutable char* ckey = toStringz(key);
-
     char* err;
-    char* value = rocksdb_get(this.db, (opts ? opts : this.readOptions).opts, ckey, key.length, &len, &err);
+    byte* value = cast(byte*)rocksdb_get(
+      this.db, (opts ? opts : this.readOptions).opts, cast(char*)key.ptr, key.length, &len, &err);
+    err.ensureRocks();
 
-    if (err) {
-      throw new Exception(format("Failed to get: %s", fromStringz(err)));
-    }
-
-    string result = (value[0..len]).to!string;
-
-    // string result = fromStringz(value).to!string;
+    byte[] result = (value[0..len]).array;
     cfree(value);
-
     return result;
   }
 
   void put(string key, string value, WriteOptions opts = null) {
-    immutable char* ckey = toStringz(key);
-    immutable char* cvalue = toStringz(value);
+    this.put(cast(byte[])key, cast(byte[])value, opts);
+  }
 
+  void put(byte[] key, byte[] value, WriteOptions opts = null) {
     char* err;
-    rocksdb_put(this.db, (opts ? opts : this.writeOptions).opts, ckey, key.length, cvalue, value.length, &err);
+    rocksdb_put(this.db,
+      (opts ? opts : this.writeOptions).opts,
+      cast(char*)key.ptr, key.length,
+      cast(char*)value.ptr, value.length,
+      &err);
+    err.ensureRocks();
+  }
 
-    if (err) {
-      throw new Exception(format("Failed to put: %s", fromStringz(err)));
-    }
+  void remove(string key, WriteOptions opts = null) {
+    this.remove(cast(byte[])key, opts);
+  }
+
+  void remove(byte[] key, WriteOptions opts = null) {
+    char* err;
+    rocksdb_delete(this.db, (opts ? opts : this.writeOptions).opts, cast(char*)key.ptr, key.length, &err);
+    err.ensureRocks();
   }
 
   void write(WriteBatch batch, WriteOptions opts = null) {
     char* err;
     rocksdb_write(this.db, (opts ? opts : this.writeOptions).opts, batch.batch, &err);
-    if (err) {
-      throw new Exception(format("Failed to write: %s", fromStringz(err)));
-    }
+    err.ensureRocks();
   }
 
   Iterator iter(ReadOptions opts = null) {
@@ -94,6 +105,7 @@ class Database {
 
 unittest {
   import std.stdio : writefln;
+  import std.datetime : benchmark;
 
   auto opts = new DBOptions;
   opts.createIfMissing = true;
@@ -102,14 +114,24 @@ unittest {
   opts.enableStatistics();
 
   auto db = new Database(opts, "test");
-  db.put("key", "value");
 
+  // Test string putting and getting
+  db.put("key", "value");
+  writefln("%s", db.get("key"));
   assert(db.get("key") == "value");
   db.put("key", "value2");
   assert(db.get("key") == "value2");
 
+  byte[] key = ['\x00', '\x00'];
+  byte[] value = ['\x01', '\x02'];
+
+  // Test byte based putting / getting
+  db.put(key, value);
+  writefln("%s", db.get(key));
+  assert(db.get(key) == value);
+  db.remove(key);
+
   // Benchmarks
-  import std.datetime : benchmark;
 
   void writeBench(int times) {
     for (int i = 0; i < times; i++) {
@@ -159,6 +181,7 @@ unittest {
       found = true;
     }
     keyCount++;
+    // writefln("%s", key);
   }
   destroy(iter);
 

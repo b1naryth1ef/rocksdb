@@ -38,11 +38,22 @@ class WriteBatch {
     return rocksdb_writebatch_count(this.batch);
   }
 
+  void put(byte[] key, byte[] value) {
+    rocksdb_writebatch_put(this.batch,
+      cast(char*)key.ptr, key.length,
+      cast(char*)value.ptr, value.length);
+  }
+
   void put(string key, string value) {
-    rocksdb_writebatch_put(this.batch, toStringz(key), key.length, toStringz(value), value.length);
+    this.put(cast(byte[])key, cast(byte[])value);
   }
   
-  void remove(string key) {
-    rocksdb_writebatch_delete(this.batch, toStringz(key), key.length);
+  void remove(byte[] key) {
+    rocksdb_writebatch_delete(this.batch, cast(char*)key.ptr, key.length);
   }
+
+  void remove(string key) {
+    this.remove(cast(byte[])key);
+  }
+
 }
