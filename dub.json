@@ -1,0 +1,6 @@
+{
+  "name": "rocksdb",
+  "targetType": "library",
+  "libraries": ["rocksdb"],
+  "lflags": ["-lrocksdb"]
+}
