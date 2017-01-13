@@ -122,7 +122,7 @@ class DBOptions {
     rocksdb_options_destroy(this.opts);
   }
 
-  @property void paralleism(int totalThreads) {
+  @property void parallelism(int totalThreads) {
     rocksdb_options_increase_parallelism(this.opts, totalThreads);
   }
 
