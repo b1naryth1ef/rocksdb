@@ -3,3 +3,4 @@ core
 librocksdb*
 .dub/
 test/
+dub.selections.json
