@@ -104,4 +104,8 @@ class Iterator {
 
     return result;
   }
+
+  void close() {
+    destroy(this);
+  }
 }

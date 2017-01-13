@@ -101,6 +101,10 @@ class Database {
   Iterator iter(ReadOptions opts = null) {
     return new Iterator(this, opts ? opts : this.readOptions);
   }
+
+  void close() {
+    destroy(this);
+  }
 }
 
 unittest {
@@ -111,7 +115,6 @@ unittest {
   opts.createIfMissing = true;
   opts.errorIfExists = false;
   opts.compression = CompressionType.NONE;
-  opts.enableStatistics();
 
   auto db = new Database(opts, "test");
 
@@ -169,9 +172,19 @@ unittest {
   writefln("Batch writing 100000 values: %sms", writeBatchRes[0].msecs);
   readBench(100_000);
 
-  writefln("%s", opts.getStatisticsString());
-
+  // Test scanning from a location
   bool found = false;
+  auto iterFrom = db.iter();
+  iterFrom.seek("key");
+  foreach (key, value; iterFrom) {
+    assert(value == "value2");
+    assert(!found);
+    found = true;
+  }
+  iterFrom.close();
+  assert(found);
+
+  found = false;
   int keyCount = 0;
   auto iter = db.iter();
 
@@ -181,10 +194,8 @@ unittest {
       found = true;
     }
     keyCount++;
-    // writefln("%s", key);
   }
-  destroy(iter);
-
+  iter.close();
   assert(found);
 
   writefln("Keys: %s", keyCount);
