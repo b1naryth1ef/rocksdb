@@ -41,7 +41,7 @@ class Database {
     char *err = null;
     this.db = rocksdb_open(opts.opts, toStringz(path), &err);
     err.ensureRocks();
-    
+
     this.writeOptions = new WriteOptions;
     this.readOptions = new ReadOptions;
   }
@@ -52,8 +52,12 @@ class Database {
     }
   }
 
-  string get(string key, ReadOptions opts=null) {
+  string get(string key, ReadOptions opts = null) {
     return (cast(char[])this.get(cast(byte[])key, opts)).to!string;
+  }
+
+  byte[] getBytes(string key, ReadOptions opts = null) {
+    return this.get(cast(byte[])key, opts);
   }
 
   byte[] get(byte[] key, ReadOptions opts = null) {
@@ -70,6 +74,10 @@ class Database {
 
   void put(string key, string value, WriteOptions opts = null) {
     this.put(cast(byte[])key, cast(byte[])value, opts);
+  }
+
+  void putBytes(string key, byte[] value, WriteOptions opts = null) {
+    this.put(cast(byte[])key, value, opts);
   }
 
   void put(byte[] key, byte[] value, WriteOptions opts = null) {
