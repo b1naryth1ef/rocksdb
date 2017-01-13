@@ -1,5 +1,9 @@
 {
   "name": "rocksdb",
+  "license": "MIT",
+  "authors": [
+    "Andrei Zbikowski <b1naryth1ef@gmail.com>"
+  ],
   "targetType": "library",
   "libraries": ["rocksdb"],
   "lflags": ["-lrocksdb"]
