@@ -6,11 +6,14 @@ import std.string : fromStringz, toStringz;
 import rocksdb.slice : Slice;
 import rocksdb.options : ReadOptions, rocksdb_readoptions_t;
 import rocksdb.database : Database, rocksdb_t;
+import rocksdb.columnfamily : ColumnFamily, rocksdb_column_family_handle_t;
 
 extern (C) {
   struct rocksdb_iterator_t {};
 
   rocksdb_iterator_t* rocksdb_create_iterator(rocksdb_t*, rocksdb_readoptions_t*);
+  rocksdb_iterator_t* rocksdb_create_iterator_cf(rocksdb_t*, rocksdb_readoptions_t*, rocksdb_column_family_handle_t*);
+
   void rocksdb_iter_destroy(rocksdb_iterator_t*);
   ubyte rocksdb_iter_valid(const rocksdb_iterator_t*);
   void rocksdb_iter_seek_to_first(rocksdb_iterator_t*);
@@ -24,15 +27,17 @@ extern (C) {
   void rocksdb_iter_get_error(const rocksdb_iterator_t*, char**);
 }
 
+
 class Iterator {
   rocksdb_iterator_t* iter;
 
-  this(Database db) {
-    this(db, db.readOptions);
-  }
-
   this(Database db, ReadOptions opts) {
     this.iter = rocksdb_create_iterator(db.db, opts.opts);
+    this.seekToFirst();
+  }
+
+  this(Database db, ColumnFamily family, ReadOptions opts) {
+    this.iter = rocksdb_create_iterator_cf(db.db, opts.opts, family.cf);
     this.seekToFirst();
   }
 

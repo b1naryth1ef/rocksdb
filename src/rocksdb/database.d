@@ -240,6 +240,12 @@ class Database {
     return new Iterator(this, opts ? opts : this.readOptions);
   }
 
+  void withIter(void delegate(Iterator) dg, ReadOptions opts = null) {
+    Iterator iter = this.iter(opts);
+    scope (exit) destroy(iter);
+    dg(iter);
+  }
+
   void close() {
     destroy(this);
   }
@@ -257,12 +263,6 @@ unittest {
   opts.compression = CompressionType.NONE;
 
   auto db = new Database(opts, "test");
-
-  // Test putting and getting into a family
-  auto family = db.columnFamilies["test1"];
-  family.put("key", "notvalue");
-  assert(family.get("key") == "notvalue");
-  assert(db.get("key") != "notvalue");
 
   // Test string putting and getting
   db.put("key", "value");

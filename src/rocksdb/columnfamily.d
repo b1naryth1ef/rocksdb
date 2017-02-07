@@ -1,7 +1,8 @@
 module rocksdb.columnfamily;
 
-import rocksdb.database : Database, rocksdb_t, ensureRocks;
 import rocksdb.options : rocksdb_options_t, ReadOptions, WriteOptions;
+import rocksdb.iterator : Iterator;
+import rocksdb.database : Database, rocksdb_t, ensureRocks;
 import rocksdb.queryable : Getable, Putable, Removeable;
 
 extern (C) {
@@ -30,6 +31,16 @@ class ColumnFamily {
     this.cf = cf;
   }
 
+  Iterator iter(ReadOptions opts = null) {
+    return new Iterator(this.db, this, opts ? opts : this.db.readOptions);
+  }
+
+  void withIter(void delegate(Iterator) dg, ReadOptions opts = null) {
+    Iterator iter = this.iter(opts);
+    scope (exit) destroy(iter);
+    dg(iter);
+  }
+
   void drop() {
     char* err = null;
     rocksdb_drop_column_family(this.db.db, this.cf, &err);
@@ -51,10 +62,12 @@ class ColumnFamily {
     this.db.removeImpl(key, this, opts);
   }
 }
+
 unittest {
   import std.stdio : writefln;
   import std.datetime : benchmark;
   import std.conv : to;
+  import std.algorithm.searching : startsWith;
   import rocksdb.options : DBOptions, CompressionType;
 
   writefln("Testing Column Families");
@@ -86,6 +99,7 @@ unittest {
 
   db.close();
   db = new Database(opts, "test");
+  scope (exit) destroy(db);
 
   // Test column family listing
   assert(Database.listColumnFamilies(opts, "test").length == columnFamilies.length + 1);
@@ -98,6 +112,12 @@ unittest {
     for (int i = 0; i < times; i++) {
       assert(cf.get(cf.name ~ i.to!string) == i.to!string);
     }
+
+    cf.withIter((iter) {
+      foreach (key, value; iter) {
+        assert(key.startsWith(cf.name));
+      }
+    });
   }
 
   foreach (name, cf; db.columnFamilies) {
@@ -106,6 +126,4 @@ unittest {
     writefln("  %s", name);
     testColumnFamily(cf, 100000);
   }
-
-  destroy(db);
 }
