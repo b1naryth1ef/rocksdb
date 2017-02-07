@@ -38,16 +38,16 @@ class ColumnFamily {
 
   byte[] getImpl(byte[] key, ColumnFamily family, ReadOptions opts = null) {
     assert(family == this || family is null);
-    return this.db.get(key, this, opts);
+    return this.db.getImpl(key, this, opts);
   }
 
   void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
     assert(family == this || family is null);
-    this.db.put(key, value, this, opts);
+    this.db.putImpl(key, value, this, opts);
   }
 
   void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
     assert(family == this || family is null);
-    this.db.remove(key, this, opts);
+    this.db.removeImpl(key, this, opts);
   }
 }
