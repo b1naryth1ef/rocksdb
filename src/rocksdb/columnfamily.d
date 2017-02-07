@@ -51,3 +51,61 @@ class ColumnFamily {
     this.db.removeImpl(key, this, opts);
   }
 }
+unittest {
+  import std.stdio : writefln;
+  import std.datetime : benchmark;
+  import std.conv : to;
+  import rocksdb.options : DBOptions, CompressionType;
+
+  writefln("Testing Column Families");
+
+  // DB Options
+  auto opts = new DBOptions;
+  opts.createIfMissing = true;
+  opts.errorIfExists = false;
+  opts.compression = CompressionType.NONE;
+
+  // Create the database (if it does not exist)
+  auto db = new Database(opts, "test");
+
+  string[] columnFamilies = [
+    "test",
+    "test1",
+    "test2",
+    "test3",
+    "test4",
+    "wow",
+  ];
+
+  // create a bunch of column families
+  foreach (cf; columnFamilies) {
+    if ((cf in db.columnFamilies) is null) {
+      db.createColumnFamily(cf);
+    }
+  }
+
+  db.close();
+  db = new Database(opts, "test");
+
+  // Test column family listing
+  assert(Database.listColumnFamilies(opts, "test").length == columnFamilies.length + 1);
+
+  void testColumnFamily(ColumnFamily cf, int times) {
+    for (int i = 0; i < times; i++) {
+      cf.put(cf.name ~ i.to!string, i.to!string);
+    }
+
+    for (int i = 0; i < times; i++) {
+      assert(cf.get(cf.name ~ i.to!string) == i.to!string);
+    }
+  }
+
+  foreach (name, cf; db.columnFamilies) {
+    if (name == "default") continue;
+
+    writefln("  %s", name);
+    testColumnFamily(cf, 100000);
+  }
+
+  destroy(db);
+}

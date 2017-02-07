@@ -1,9 +1,11 @@
 module rocksdb.database;
 
-import std.array : array;
 import std.conv : to;
+import std.file : isDir, exists;
+import std.array : array;
 import std.string : fromStringz, toStringz;
 import std.format : format;
+
 import core.stdc.stdlib : cfree = free;
 import core.stdc.string : strlen;
 
@@ -58,8 +60,13 @@ class Database {
     char* err = null;
     this.opts = opts;
 
-    // First check if the database has any column families
-    auto existingColumnFamilies = Database.listColumnFamilies(opts, path);
+    string[] existingColumnFamilies;
+
+    // If there is an existing database we can check for existing column families
+    if (exists(path) && isDir(path)) {
+      // First check if the database has any column families
+      existingColumnFamilies = Database.listColumnFamilies(opts, path);
+    }
 
     if (columnFamilies || existingColumnFamilies.length >= 1) {
       immutable(char*)[] columnFamilyNames;
@@ -242,33 +249,14 @@ unittest {
   import std.stdio : writefln;
   import std.datetime : benchmark;
 
+  writefln("Testing Database");
+
   auto opts = new DBOptions;
   opts.createIfMissing = true;
   opts.errorIfExists = false;
   opts.compression = CompressionType.NONE;
 
-  // Create the database (if it does not exist)
   auto db = new Database(opts, "test");
-
-  // Create some column families
-  if (("test1" in db.columnFamilies) is null) {
-    db.createColumnFamily("test1");
-  }
-
-  if (("test2" in db.columnFamilies) is null) {
-    db.createColumnFamily("test2");
-  }
-
-  // Close the database
-  db.close();
-
-  // Test column family listing
-  assert(Database.listColumnFamilies(opts, "test").length == 3);
-
-  // Recreate database
-  auto families = [ "test1": opts, "test2": opts ];
-
-  db = new Database(opts, "test", families);
 
   // Test putting and getting into a family
   auto family = db.columnFamilies["test1"];
@@ -278,7 +266,6 @@ unittest {
 
   // Test string putting and getting
   db.put("key", "value");
-  writefln("%s", db.get("key"));
   assert(db.get("key") == "value");
   db.put("key", "value2");
   assert(db.get("key") == "value2");
@@ -288,7 +275,6 @@ unittest {
 
   // Test byte based putting / getting
   db.put(key, value);
-  writefln("%s", db.get(key));
   assert(db.get(key) == value);
   db.remove(key);
 
@@ -307,10 +293,10 @@ unittest {
   }
 
   auto writeRes = benchmark!(() => writeBench(100_000))(1);
-  writefln("Writing a value 100000 times: %sms", writeRes[0].msecs);
+  writefln("  writing a value 100000 times: %sms", writeRes[0].msecs);
 
   auto readRes = benchmark!(() => readBench(100_000))(1);
-  writefln("Reading a value 100000 times: %sms", readRes[0].msecs);
+  writefln("  reading a value 100000 times: %sms", readRes[0].msecs);
 
   // Test batch
   auto batch = new WriteBatch;
@@ -327,7 +313,7 @@ unittest {
   }
 
   auto writeBatchRes = benchmark!(() => writeBatchBench(100_000))(1);
-  writefln("Batch writing 100000 values: %sms", writeBatchRes[0].msecs);
+  writefln("  batch writing 100000 values: %sms", writeBatchRes[0].msecs);
   readBench(100_000);
 
   // Test scanning from a location
@@ -355,9 +341,6 @@ unittest {
   }
   iter.close();
   assert(found);
-
-  writefln("Keys: %s", keyCount);
   assert(keyCount == 100001);
-
   destroy(db);
 }
