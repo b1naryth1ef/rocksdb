@@ -254,13 +254,19 @@ class Database {
 unittest {
   import std.stdio : writefln;
   import std.datetime : benchmark;
+  import rocksdb.env : Env;
 
   writefln("Testing Database");
+
+  auto env = new Env;
+  env.backgroundThreads = 2;
+  env.highPriorityBackgroundThreads = 1;
 
   auto opts = new DBOptions;
   opts.createIfMissing = true;
   opts.errorIfExists = false;
   opts.compression = CompressionType.NONE;
+  opts.env = env;
 
   auto db = new Database(opts, "test");
 

@@ -4,8 +4,9 @@ import std.conv : to;
 import std.string : fromStringz;
 import core.stdc.stdlib : cfree = free;
 
-import rocksdb.comparator,
-       rocksdb.snapshot : Snapshot, rocksdb_snapshot_t;
+import rocksdb.comparator;
+import rocksdb.env : Env, rocksdb_env_t;
+import rocksdb.snapshot : Snapshot, rocksdb_snapshot_t;
 
 extern (C) {
   struct rocksdb_options_t {};
@@ -16,7 +17,10 @@ extern (C) {
   void rocksdb_options_destroy(rocksdb_options_t*);
   void rocksdb_options_increase_parallelism(rocksdb_options_t*, int total_threads);
   void rocksdb_options_set_create_if_missing(rocksdb_options_t*, ubyte);
+  void rocksdb_options_set_create_missing_column_families(rocksdb_options_t*, ubyte);
   void rocksdb_options_set_error_if_exists(rocksdb_options_t*, ubyte);
+  void rocksdb_options_set_paranoid_checks(rocksdb_options_t*, ubyte);
+  void rocksdb_options_set_env(rocksdb_options_t*, rocksdb_env_t*);
   void rocksdb_options_set_compression(rocksdb_options_t*, int);
   void rocksdb_options_set_comparator(rocksdb_options_t*, rocksdb_comparator_t*);
   void rocksdb_options_enable_statistics(rocksdb_options_t*);
@@ -130,8 +134,20 @@ class DBOptions {
     rocksdb_options_set_create_if_missing(this.opts, cast(ubyte)value);
   }
 
+  @property void createMissingColumnFamilies(bool value) {
+    rocksdb_options_set_create_missing_column_families(this.opts, cast(ubyte)value);
+  }
+
   @property void errorIfExists(bool value) {
     rocksdb_options_set_error_if_exists(this.opts, cast(ubyte)value);
+  }
+
+  @property void paranoidChecks(bool value) {
+    rocksdb_options_set_paranoid_checks(this.opts, cast(ubyte)value);
+  }
+
+  @property void env(Env env) {
+    rocksdb_options_set_env(this.opts, env.env);
   }
 
   @property void compression(CompressionType type) {
