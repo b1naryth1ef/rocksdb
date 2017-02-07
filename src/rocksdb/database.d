@@ -246,6 +246,13 @@ class Database {
     dg(iter);
   }
 
+  void withBatch(void delegate(WriteBatch) dg, WriteOptions opts = null) {
+    WriteBatch batch = new WriteBatch;
+    scope (exit) destroy(batch);
+    scope (success) this.write(batch, opts);
+    dg(batch);
+  }
+
   void close() {
     destroy(this);
   }
@@ -305,17 +312,14 @@ unittest {
   writefln("  reading a value 100000 times: %sms", readRes[0].msecs);
 
   // Test batch
-  auto batch = new WriteBatch;
-
   void writeBatchBench(int times) {
-    auto batch = new WriteBatch;
+    db.withBatch((batch) {
+      for (int i = 0; i < times; i++) {
+        batch.put(i.to!string, i.to!string);
+      }
 
-    for (int i = 0; i < times; i++) {
-      batch.put(i.to!string, i.to!string);
-    }
-
-    assert(batch.count() == times);
-    db.write(batch);
+      assert(batch.count() == times);
+    });
   }
 
   auto writeBatchRes = benchmark!(() => writeBatchBench(100_000))(1);
