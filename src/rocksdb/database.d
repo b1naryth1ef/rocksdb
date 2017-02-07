@@ -10,19 +10,29 @@ import core.stdc.string : strlen;
 import rocksdb.batch,
        rocksdb.options,
        rocksdb.iterator,
-       rocksdb.comparator;
+       rocksdb.queryable,
+       rocksdb.comparator,
+       rocksdb.columnfamily;
 
 extern (C) {
   struct rocksdb_t {};
 
   void rocksdb_put(rocksdb_t*, const rocksdb_writeoptions_t*, const char*, size_t, const char*, size_t, char**);
+  void rocksdb_put_cf(rocksdb_t*, const rocksdb_writeoptions_t*, rocksdb_column_family_handle_t*, const char*, size_t, const char*, size_t, char**);
+
   char* rocksdb_get(rocksdb_t*, const rocksdb_readoptions_t*, const char*, size_t, size_t*, char**);
+  char* rocksdb_get_cf(rocksdb_t*, const rocksdb_readoptions_t*, rocksdb_column_family_handle_t*, const char*, size_t, size_t*, char**);
+
   void rocksdb_delete(rocksdb_t*, const rocksdb_writeoptions_t*, const char*, size_t, char**);
+  void rocksdb_delete_cf(rocksdb_t*, const rocksdb_writeoptions_t*, rocksdb_column_family_handle_t*, const char*, size_t, char**);
 
   void rocksdb_write(rocksdb_t*, const rocksdb_writeoptions_t*, rocksdb_writebatch_t*, char**);
 
-  rocksdb_t* rocksdb_open(const rocksdb_options_t*, const char* name, char** errptr);
+  rocksdb_t* rocksdb_open(const rocksdb_options_t*, const char*, char**);
+  rocksdb_t* rocksdb_open_column_families(const rocksdb_options_t*, const char*, int, const char**, const rocksdb_options_t**, rocksdb_column_family_handle_t**, char**);
+
   void rocksdb_close(rocksdb_t*);
+
 }
 
 void ensureRocks(char* err) {
@@ -32,14 +42,62 @@ void ensureRocks(char* err) {
 }
 
 class Database {
+  mixin Getable;
+  mixin Putable;
+  mixin Removeable;
+
   rocksdb_t* db;
 
+  DBOptions opts;
   WriteOptions writeOptions;
   ReadOptions readOptions;
 
-  this(DBOptions opts, string path) {
-    char *err = null;
-    this.db = rocksdb_open(opts.opts, toStringz(path), &err);
+  ColumnFamily[string] columnFamilies;
+
+  this(DBOptions opts, string path, DBOptions[string] columnFamilies = null) {
+    char* err = null;
+    this.opts = opts;
+
+    // First check if the database has any column families
+    auto existingColumnFamilies = Database.listColumnFamilies(opts, path);
+
+    if (columnFamilies || existingColumnFamilies.length >= 1) {
+      immutable(char*)[] columnFamilyNames;
+      rocksdb_options_t*[] columnFamilyOptions;
+
+      foreach (k; existingColumnFamilies) {
+        columnFamilyNames ~= toStringz(k);
+
+        if ((k in columnFamilies) !is null) {
+          columnFamilyOptions ~= columnFamilies[k].opts;
+        } else {
+          columnFamilyOptions ~= opts.opts;
+        }
+      }
+
+      rocksdb_column_family_handle_t*[] result;
+      result.length = columnFamilyNames.length;
+
+      this.db = rocksdb_open_column_families(
+        opts.opts,
+        toStringz(path),
+        cast(int)columnFamilyNames.length,
+        columnFamilyNames.ptr,
+        columnFamilyOptions.ptr,
+        result.ptr,
+        &err);
+
+      foreach (idx, handle; result) {
+        this.columnFamilies[existingColumnFamilies[idx]] = new ColumnFamily(
+          this,
+          existingColumnFamilies[idx],
+          handle,
+        );
+      }
+    } else {
+      this.db = rocksdb_open(opts.opts, toStringz(path), &err);
+    }
+
     err.ensureRocks();
 
     this.writeOptions = new WriteOptions;
@@ -48,23 +106,72 @@ class Database {
 
   ~this() {
     if (this.db) {
+      foreach (k, v; this.columnFamilies) {
+        rocksdb_column_family_handle_destroy(v.cf);
+      }
+
       rocksdb_close(this.db);
     }
   }
 
-  string get(string key, ReadOptions opts = null) {
-    return (cast(char[])this.get(cast(byte[])key, opts)).to!string;
+  ColumnFamily createColumnFamily(string name, DBOptions opts = null) {
+    char* err = null;
+
+    auto cfh = rocksdb_create_column_family(this.db, (opts ? opts : this.opts).opts, toStringz(name), &err);
+    err.ensureRocks();
+
+    this.columnFamilies[name] = new ColumnFamily(this, name, cfh);
+    return this.columnFamilies[name];
   }
 
-  byte[] getBytes(string key, ReadOptions opts = null) {
-    return this.get(cast(byte[])key, opts);
+  static string[] listColumnFamilies(DBOptions opts, string path) {
+    char* err = null;
+    size_t numColumnFamilies;
+
+    char** columnFamilies = rocksdb_list_column_families(
+      opts.opts,
+      toStringz(path),
+      &numColumnFamilies,
+      &err);
+
+    err.ensureRocks();
+
+    string[] result = new string[](numColumnFamilies);
+
+    // Iterate over and convert/copy all column family names
+    for (size_t i = 0; i < numColumnFamilies; i++) {
+      result[i] = fromStringz(columnFamilies[i]).to!string;
+    }
+
+    rocksdb_list_column_families_destroy(columnFamilies, numColumnFamilies);
+
+    return result;
   }
 
-  byte[] get(byte[] key, ReadOptions opts = null) {
+  byte[] getImpl(byte[] key, ColumnFamily family, ReadOptions opts = null) {
     size_t len;
     char* err;
-    byte* value = cast(byte*)rocksdb_get(
-      this.db, (opts ? opts : this.readOptions).opts, cast(char*)key.ptr, key.length, &len, &err);
+    byte* value;
+
+    if (family) {
+      value = cast(byte*)rocksdb_get_cf(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        family.cf,
+        cast(char*)key.ptr,
+        key.length,
+        &len,
+        &err);
+    } else {
+      value = cast(byte*)rocksdb_get(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        cast(char*)key.ptr,
+        key.length,
+        &len,
+        &err);
+    }
+
     err.ensureRocks();
 
     byte[] result = (value[0..len]).array;
@@ -72,31 +179,47 @@ class Database {
     return result;
   }
 
-  void put(string key, string value, WriteOptions opts = null) {
-    this.put(cast(byte[])key, cast(byte[])value, opts);
-  }
-
-  void putBytes(string key, byte[] value, WriteOptions opts = null) {
-    this.put(cast(byte[])key, value, opts);
-  }
-
-  void put(byte[] key, byte[] value, WriteOptions opts = null) {
+  void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
     char* err;
-    rocksdb_put(this.db,
-      (opts ? opts : this.writeOptions).opts,
-      cast(char*)key.ptr, key.length,
-      cast(char*)value.ptr, value.length,
-      &err);
+
+    if (family) {
+      rocksdb_put_cf(this.db,
+        (opts ? opts : this.writeOptions).opts,
+        family.cf,
+        cast(char*)key.ptr, key.length,
+        cast(char*)value.ptr, value.length,
+        &err);
+    } else {
+      rocksdb_put(this.db,
+        (opts ? opts : this.writeOptions).opts,
+        cast(char*)key.ptr, key.length,
+        cast(char*)value.ptr, value.length,
+        &err);
+    }
+
     err.ensureRocks();
   }
 
-  void remove(string key, WriteOptions opts = null) {
-    this.remove(cast(byte[])key, opts);
-  }
-
-  void remove(byte[] key, WriteOptions opts = null) {
+  void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
     char* err;
-    rocksdb_delete(this.db, (opts ? opts : this.writeOptions).opts, cast(char*)key.ptr, key.length, &err);
+
+    if (family) {
+      rocksdb_delete_cf(
+        this.db,
+        (opts ? opts : this.writeOptions).opts,
+        family.cf,
+        cast(char*)key.ptr,
+        key.length,
+        &err);
+    } else {
+      rocksdb_delete(
+        this.db,
+        (opts ? opts : this.writeOptions).opts,
+        cast(char*)key.ptr,
+        key.length,
+        &err);
+    }
+
     err.ensureRocks();
   }
 
@@ -124,7 +247,34 @@ unittest {
   opts.errorIfExists = false;
   opts.compression = CompressionType.NONE;
 
+  // Create the database (if it does not exist)
   auto db = new Database(opts, "test");
+
+  // Create some column families
+  if (("test1" in db.columnFamilies) is null) {
+    db.createColumnFamily("test1");
+  }
+
+  if (("test2" in db.columnFamilies) is null) {
+    db.createColumnFamily("test2");
+  }
+
+  // Close the database
+  db.close();
+
+  // Test column family listing
+  assert(Database.listColumnFamilies(opts, "test").length == 3);
+
+  // Recreate database
+  auto families = [ "test1": opts, "test2": opts ];
+
+  db = new Database(opts, "test", families);
+
+  // Test putting and getting into a family
+  auto family = db.columnFamilies["test1"];
+  family.put("key", "notvalue");
+  assert(family.get("key") == "notvalue");
+  assert(db.get("key") != "notvalue");
 
   // Test string putting and getting
   db.put("key", "value");

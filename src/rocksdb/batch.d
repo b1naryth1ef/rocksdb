@@ -2,6 +2,10 @@ module rocksdb.batch;
 
 import std.string : toStringz;
 
+import rocksdb.options,
+       rocksdb.queryable,
+       rocksdb.columnfamily;
+
 extern (C) {
   struct rocksdb_writebatch_t {};
 
@@ -12,10 +16,17 @@ extern (C) {
   int rocksdb_writebatch_count(rocksdb_writebatch_t*);
 
   void rocksdb_writebatch_put(rocksdb_writebatch_t*, const char*, size_t, const char*, size_t);
+  void rocksdb_writebatch_put_cf(rocksdb_writebatch_t*, rocksdb_column_family_handle_t*, const char*, size_t, const char*, size_t);
+
   void rocksdb_writebatch_delete(rocksdb_writebatch_t*, const char*, size_t);
+  void rocksdb_writebatch_delete_cf(rocksdb_writebatch_t*, rocksdb_column_family_handle_t*, const char*, size_t);
 }
 
+
 class WriteBatch {
+  mixin Putable;
+  mixin Removeable;
+
   rocksdb_writebatch_t* batch;
 
   this() {
@@ -38,22 +49,41 @@ class WriteBatch {
     return rocksdb_writebatch_count(this.batch);
   }
 
-  void put(byte[] key, byte[] value) {
-    rocksdb_writebatch_put(this.batch,
-      cast(char*)key.ptr, key.length,
-      cast(char*)value.ptr, value.length);
+  void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
+    assert(opts is null, "WriteBatch cannot use WriteOptions");
+
+    if (family) {
+      rocksdb_writebatch_put_cf(
+        this.batch,
+        family.cf,
+        cast(char*)key.ptr,
+        key.length,
+        cast(char*)value.ptr,
+        value.length);
+    } else {
+      rocksdb_writebatch_put(
+        this.batch,
+        cast(char*)key.ptr,
+        key.length,
+        cast(char*)value.ptr,
+        value.length);
+    }
   }
 
-  void put(string key, string value) {
-    this.put(cast(byte[])key, cast(byte[])value);
-  }
-  
-  void remove(byte[] key) {
-    rocksdb_writebatch_delete(this.batch, cast(char*)key.ptr, key.length);
-  }
+  void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
+    assert(opts is null, "WriteBatch cannot use WriteOptions");
 
-  void remove(string key) {
-    this.remove(cast(byte[])key);
+    if (family) {
+      rocksdb_writebatch_delete_cf(
+        this.batch,
+        family.cf,
+        cast(char*)key.ptr,
+        key.length);
+    } else {
+      rocksdb_writebatch_delete(
+        this.batch,
+        cast(char*)key.ptr,
+        key.length);
+    }
   }
-
 }
