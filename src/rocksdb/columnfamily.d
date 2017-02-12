@@ -47,6 +47,14 @@ class ColumnFamily {
     err.ensureRocks();
   }
 
+  ubyte[][] multiGet(ubyte[][] keys, ReadOptions opts = null) {
+    return this.db.multiGet(keys, this, opts);
+  }
+
+  string[] multiGetString(string[] keys, ReadOptions opts = null) {
+    return this.db.multiGetString(keys, this, opts);
+  }
+
   ubyte[] getImpl(ubyte[] key, ColumnFamily family, ReadOptions opts = null) {
     assert(family == this || family is null);
     return this.db.getImpl(key, this, opts);
