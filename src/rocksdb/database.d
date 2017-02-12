@@ -6,7 +6,7 @@ import std.array : array;
 import std.string : fromStringz, toStringz;
 import std.format : format;
 
-import core.stdc.stdlib : cfree = free;
+import core.memory : GC;
 import core.stdc.string : strlen;
 
 import rocksdb.batch,
@@ -24,6 +24,9 @@ extern (C) {
 
   char* rocksdb_get(rocksdb_t*, const rocksdb_readoptions_t*, const char*, size_t, size_t*, char**);
   char* rocksdb_get_cf(rocksdb_t*, const rocksdb_readoptions_t*, rocksdb_column_family_handle_t*, const char*, size_t, size_t*, char**);
+
+  void rocksdb_multi_get(rocksdb_t*, const rocksdb_readoptions_t*, size_t, const char**, const size_t*, char**, size_t*, char**);
+  void rocksdb_multi_get_cf(rocksdb_t*, const rocksdb_readoptions_t*, const rocksdb_column_family_handle_t*, size_t, const char**, const size_t*, char**, size_t*, char**);
 
   void rocksdb_delete(rocksdb_t*, const rocksdb_writeoptions_t*, const char*, size_t, char**);
   void rocksdb_delete_cf(rocksdb_t*, const rocksdb_writeoptions_t*, rocksdb_column_family_handle_t*, const char*, size_t, char**);
@@ -155,13 +158,13 @@ class Database {
     return result;
   }
 
-  byte[] getImpl(byte[] key, ColumnFamily family, ReadOptions opts = null) {
+  ubyte[] getImpl(ubyte[] key, ColumnFamily family, ReadOptions opts = null) {
     size_t len;
     char* err;
-    byte* value;
+    ubyte* value;
 
     if (family) {
-      value = cast(byte*)rocksdb_get_cf(
+      value = cast(ubyte*)rocksdb_get_cf(
         this.db,
         (opts ? opts : this.readOptions).opts,
         family.cf,
@@ -170,7 +173,7 @@ class Database {
         &len,
         &err);
     } else {
-      value = cast(byte*)rocksdb_get(
+      value = cast(ubyte*)rocksdb_get(
         this.db,
         (opts ? opts : this.readOptions).opts,
         cast(char*)key.ptr,
@@ -180,13 +183,11 @@ class Database {
     }
 
     err.ensureRocks();
-
-    byte[] result = (value[0..len]).array;
-    cfree(value);
-    return result;
+    GC.addRange(value, len);
+    return cast(ubyte[])value[0..len];
   }
 
-  void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
+  void putImpl(ubyte[] key, ubyte[] value, ColumnFamily family, WriteOptions opts = null) {
     char* err;
 
     if (family) {
@@ -207,7 +208,7 @@ class Database {
     err.ensureRocks();
   }
 
-  void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
+  void removeImpl(ubyte[] key, ColumnFamily family, WriteOptions opts = null) {
     char* err;
 
     if (family) {
@@ -228,6 +229,96 @@ class Database {
     }
 
     err.ensureRocks();
+  }
+
+  ubyte[][] multiGet(ubyte[][] keys, ColumnFamily family = null, ReadOptions opts = null) {
+    char*[] ckeys = new char*[](keys.length);
+    size_t[] ckeysSizes = new size_t[](keys.length);
+
+    foreach (idx, key; keys) {
+      ckeys[idx] = cast(char*)key;
+      ckeysSizes[idx] = key.length;
+    }
+
+    char*[] vals = new char*[](keys.length);
+    size_t[] valsSizes = new size_t[](keys.length);
+    char*[] errs = new char*[](keys.length);
+
+    if (family) {
+      rocksdb_multi_get_cf(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        family.cf,
+        keys.length,
+        ckeys.ptr,
+        ckeysSizes.ptr,
+        vals.ptr,
+        valsSizes.ptr,
+        errs.ptr);
+    } else {
+      rocksdb_multi_get(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        keys.length,
+        ckeys.ptr,
+        ckeysSizes.ptr,
+        vals.ptr,
+        valsSizes.ptr,
+        errs.ptr);
+    }
+
+    ubyte[][] result = new ubyte[][](keys.length);
+    for (int idx = 0; idx < ckeys.length; idx++) {
+      errs[idx].ensureRocks();
+      result[idx] = cast(ubyte[])vals[idx][0..valsSizes[idx]];
+    }
+
+    return result;
+  }
+
+  string[] multiGetString(string[] keys, ColumnFamily family = null, ReadOptions opts = null) {
+    char*[] ckeys = new char*[](keys.length);
+    size_t[] ckeysSizes = new size_t[](keys.length);
+
+    foreach (idx, key; keys) {
+      ckeys[idx] = cast(char*)key.ptr;
+      ckeysSizes[idx] = key.length;
+    }
+
+    char*[] vals = new char*[](keys.length);
+    size_t[] valsSizes = new size_t[](keys.length);
+    char*[] errs = new char*[](keys.length);
+
+    if (family) {
+      rocksdb_multi_get_cf(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        family.cf,
+        keys.length,
+        ckeys.ptr,
+        ckeysSizes.ptr,
+        vals.ptr,
+        valsSizes.ptr,
+        errs.ptr);
+    } else {
+      rocksdb_multi_get(
+        this.db,
+        (opts ? opts : this.readOptions).opts,
+        keys.length,
+        ckeys.ptr,
+        ckeysSizes.ptr,
+        vals.ptr,
+        valsSizes.ptr,
+        errs.ptr);
+    }
+
+    string[] result = new string[](keys.length);
+    for (int idx = 0; idx < ckeys.length; idx++) {
+      errs[idx].ensureRocks();
+      result[idx] = cast(string)vals[idx][0..valsSizes[idx]];
+    }
+
+    return result;
   }
 
   void write(WriteBatch batch, WriteOptions opts = null) {
@@ -278,13 +369,13 @@ unittest {
   auto db = new Database(opts, "test");
 
   // Test string putting and getting
-  db.put("key", "value");
-  assert(db.get("key") == "value");
-  db.put("key", "value2");
-  assert(db.get("key") == "value2");
+  db.putString("key", "value");
+  assert(db.getString("key") == "value");
+  db.putString("key", "value2");
+  assert(db.getString("key") == "value2");
 
-  byte[] key = ['\x00', '\x00'];
-  byte[] value = ['\x01', '\x02'];
+  ubyte[] key = ['\x00', '\x00'];
+  ubyte[] value = ['\x01', '\x02'];
 
   // Test byte based putting / getting
   db.put(key, value);
@@ -295,13 +386,13 @@ unittest {
 
   void writeBench(int times) {
     for (int i = 0; i < times; i++) {
-      db.put(i.to!string, i.to!string);
+      db.putString(i.to!string, i.to!string);
     }
   }
 
   void readBench(int times) {
     for (int i = 0; i < times; i++) {
-      assert(db.get(i.to!string) == i.to!string);
+      assert(db.getString(i.to!string) == i.to!string);
     }
   }
 
@@ -315,7 +406,7 @@ unittest {
   void writeBatchBench(int times) {
     db.withBatch((batch) {
       for (int i = 0; i < times; i++) {
-        batch.put(i.to!string, i.to!string);
+        batch.putString(i.to!string, i.to!string);
       }
 
       assert(batch.count() == times);

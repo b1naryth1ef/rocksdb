@@ -54,11 +54,19 @@ class Iterator {
   }
 
   void seek(string key) {
-    rocksdb_iter_seek(this.iter, toStringz(key), key.length);
+    this.seek(cast(ubyte[])key);
+  }
+
+  void seek(in ubyte[] key) {
+    rocksdb_iter_seek(this.iter, cast(char*)key.ptr, key.length);
   }
 
   void seekPrev(string key) {
-    rocksdb_iter_seek_for_prev(this.iter, toStringz(key), key.length);
+    this.seekPrev(cast(ubyte[])key);
+  }
+
+  void seekPrev(in ubyte[] key) {
+    rocksdb_iter_seek_for_prev(this.iter, cast(char*)key.ptr, key.length);
   }
 
   void next() {
@@ -73,8 +81,10 @@ class Iterator {
     return cast(bool)rocksdb_iter_valid(this.iter);
   }
 
-  string key() {
-    return this.keySlice().toString();
+  ubyte[] key() {
+    size_t size;
+    immutable char* ckey = rocksdb_iter_key(this.iter, &size);
+    return cast(ubyte[])ckey[0..size];
   }
 
   Slice keySlice() {
@@ -83,8 +93,10 @@ class Iterator {
     return Slice(size, ckey);
   }
 
-  string value() {
-    return this.valueSlice().toString();
+  ubyte[] value() {
+    size_t size;
+    immutable char* cvalue = rocksdb_iter_value(this.iter, &size);
+    return cast(ubyte[])cvalue[0..size];
   }
 
   Slice valueSlice() {
@@ -93,16 +105,24 @@ class Iterator {
     return Slice(size, cvalue);
   }
 
+  /*
   int opApply(scope int delegate(ref string, ref string) dg) {
-    string key;
-    string value;
+    int result = 0;
+
+    foreach (key, value; this) {
+      result = dg(cast(string)key, cast(string)value);
+      if (result) break;
+    }
+
+    return result;
+  }
+  */
+
+  int opApply(scope int delegate(ubyte[], ubyte[]) dg) {
     int result = 0;
 
     while (this.valid()) {
-      key = this.key();
-      value = this.value();
-
-      result = dg(key, value);
+      result = dg(this.key(), this.value());
       if (result) break;
       this.next();
     }

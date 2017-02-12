@@ -47,17 +47,17 @@ class ColumnFamily {
     err.ensureRocks();
   }
 
-  byte[] getImpl(byte[] key, ColumnFamily family, ReadOptions opts = null) {
+  ubyte[] getImpl(ubyte[] key, ColumnFamily family, ReadOptions opts = null) {
     assert(family == this || family is null);
     return this.db.getImpl(key, this, opts);
   }
 
-  void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
+  void putImpl(ubyte[] key, ubyte[] value, ColumnFamily family, WriteOptions opts = null) {
     assert(family == this || family is null);
     this.db.putImpl(key, value, this, opts);
   }
 
-  void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
+  void removeImpl(ubyte[] key, ColumnFamily family, WriteOptions opts = null) {
     assert(family == this || family is null);
     this.db.removeImpl(key, this, opts);
   }
@@ -106,11 +106,11 @@ unittest {
 
   void testColumnFamily(ColumnFamily cf, int times) {
     for (int i = 0; i < times; i++) {
-      cf.put(cf.name ~ i.to!string, i.to!string);
+      cf.putString(cf.name ~ i.to!string, i.to!string);
     }
 
     for (int i = 0; i < times; i++) {
-      assert(cf.get(cf.name ~ i.to!string) == i.to!string);
+      assert(cf.getString(cf.name ~ i.to!string) == i.to!string);
     }
 
     cf.withIter((iter) {
@@ -124,6 +124,6 @@ unittest {
     if (name == "default") continue;
 
     writefln("  %s", name);
-    testColumnFamily(cf, 100000);
+    testColumnFamily(cf, 1000);
   }
 }

@@ -49,7 +49,7 @@ class WriteBatch {
     return rocksdb_writebatch_count(this.batch);
   }
 
-  void putImpl(byte[] key, byte[] value, ColumnFamily family, WriteOptions opts = null) {
+  void putImpl(ubyte[] key, ubyte[] value, ColumnFamily family, WriteOptions opts = null) {
     assert(opts is null, "WriteBatch cannot use WriteOptions");
 
     if (family) {
@@ -70,7 +70,7 @@ class WriteBatch {
     }
   }
 
-  void removeImpl(byte[] key, ColumnFamily family, WriteOptions opts = null) {
+  void removeImpl(ubyte[] key, ColumnFamily family, WriteOptions opts = null) {
     assert(opts is null, "WriteBatch cannot use WriteOptions");
 
     if (family) {

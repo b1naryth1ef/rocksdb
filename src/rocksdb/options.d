@@ -22,6 +22,7 @@ extern (C) {
   void rocksdb_options_set_paranoid_checks(rocksdb_options_t*, ubyte);
   void rocksdb_options_set_env(rocksdb_options_t*, rocksdb_env_t*);
   void rocksdb_options_set_compression(rocksdb_options_t*, int);
+  void rocksdb_options_set_compaction_style(rocksdb_options_t*, int);
   void rocksdb_options_set_comparator(rocksdb_options_t*, rocksdb_comparator_t*);
   void rocksdb_options_enable_statistics(rocksdb_options_t*);
   char* rocksdb_options_statistics_get_string(rocksdb_options_t*);
@@ -42,7 +43,7 @@ extern (C) {
   void rocksdb_readoptions_set_readahead_size(rocksdb_readoptions_t*, size_t);
 }
 
-enum CompressionType : ubyte {
+enum CompressionType : int {
   NONE = 0x0,
   SNAPPY = 0x1,
   ZLIB = 0x2,
@@ -51,6 +52,12 @@ enum CompressionType : ubyte {
   LZ4HC = 0x5,
   XPRESS = 0x6,
   ZSTD = 0x7,
+}
+
+enum CompactionStyle : int {
+  LEVEL = 0,
+  UNIVERSAL = 1,
+  FIFO = 2,
 }
 
 enum ReadTier : int {
@@ -151,7 +158,11 @@ class DBOptions {
   }
 
   @property void compression(CompressionType type) {
-    rocksdb_options_set_compression(this.opts, cast(int)type);
+    rocksdb_options_set_compression(this.opts, type);
+  }
+
+  @property void compactionStyle(CompactionStyle style) {
+    rocksdb_options_set_compaction_style(this.opts, style);
   }
 
   @property void comparator(Comparator cmp) {
