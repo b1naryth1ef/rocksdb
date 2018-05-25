@@ -6,6 +6,22 @@
     "Andrei Zbikowski <b1naryth1ef@gmail.com>"
   ],
   "targetType": "library",
-  "libraries": ["rocksdb"],
-  "lflags": ["-lrocksdb"]
+  "libs-windows-x86_64": [
+	"rocksdb-shared"
+  ],
+  "libs-windows-x86_mscoff": [
+    "rocksdb-shared"
+  ],
+  "libs-posix": [
+    "rocksdb"
+  ],
+  "lflags-windows-x86_64": [
+    "-lrocksdb-shared"
+  ],
+  "lflags-windows-x86_mscoff": [
+    "-lrocksdb-shared"
+  ],
+  "lflags-posix": [
+    "-lrocksdb"	
+  ]
 }

@@ -4,7 +4,17 @@ A straightforward binding to RocksDB v5.0.1 in D-lang.
 
 ## Building
 
-You need a valid rocksdb library somewhere your linker can find it.
+You need a valid rocksdb library in the root of this project so your linker can find it.  It is recommended to use a recent version of rocksdb, tested with 
+
+- facebook-rocksdb-v5.12.4
+
+Note: Windows rocksdb is functional, recommendation is to use vcpkg to build rocks first, and copy your rocksdb-shared.dll into the root of this project.
+
+## Testing
+
+> dub test
+
+will launch a benchmark, and should be enough to convine one of the functionality and performance.
 
 ## Example
 
